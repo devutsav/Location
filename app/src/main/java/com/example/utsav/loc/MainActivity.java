@@ -2,8 +2,12 @@ package com.example.utsav.loc;
 
 import android.*;
 import android.Manifest;
+import android.app.Activity;
+import android.content.Intent;
+import android.content.IntentSender;
 import android.content.pm.PackageManager;
 import android.location.Location;
+import android.os.Handler;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 import android.support.v7.app.AppCompatActivity;
@@ -17,10 +21,17 @@ import android.widget.Toast;
 import com.google.android.gms.common.ConnectionResult;
 import com.google.android.gms.common.GooglePlayServicesUtil;
 import com.google.android.gms.common.api.GoogleApiClient;
+import com.google.android.gms.common.api.PendingResult;
+import com.google.android.gms.common.api.ResultCallback;
+import com.google.android.gms.common.api.Status;
 import com.google.android.gms.instantapps.ActivityCompat;
 import com.google.android.gms.location.LocationListener;
 import com.google.android.gms.location.LocationRequest;
 import com.google.android.gms.location.LocationServices;
+import com.google.android.gms.location.LocationSettingsRequest;
+import com.google.android.gms.location.LocationSettingsResult;
+import com.google.android.gms.location.LocationSettingsStates;
+import com.google.android.gms.location.LocationSettingsStatusCodes;
 
 
 public class MainActivity extends AppCompatActivity implements GoogleApiClient.ConnectionCallbacks,
@@ -35,6 +46,8 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
     private LocationRequest mLocationRequest;
     private GoogleApiClient mGoogleApiClient;
     private Location mLocation, mLastLocation;
+    LocationSettingsRequest.Builder builder;
+    private static final int LOCATION_SETTING_REQUEST = 1;
 
     private static int UPDATE_INTERVAL = 5000;
     private static int FASTEST_INTERVAL = 3000;
@@ -79,14 +92,60 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
             }
         }
 
+        builder = new LocationSettingsRequest.Builder()
+                .addLocationRequest(mLocationRequest);
+
         button.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                displayLocation();
+                PendingResult<LocationSettingsResult> result2;
+                result2 = LocationServices.SettingsApi.checkLocationSettings(mGoogleApiClient,
+                        builder.build());
+                settingLocation(result2);
+               // displayLocation();
             }
 
         });
 
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if(requestCode==LOCATION_SETTING_REQUEST){
+            Log.e("Blog","Location");
+            switch(resultCode){
+                case Activity.RESULT_OK:
+                    Handler handler=new Handler();
+                    handler.postDelayed(new Runnable() {
+                        @Override
+                        public void run() {
+                            displayLocation();
+                        }
+                    },2000);
+
+                    break;
+                case RESULT_CANCELED:
+                    Log.e("Blog","Cancel");
+                    PendingResult<LocationSettingsResult> result;
+                    result = LocationServices.SettingsApi.checkLocationSettings(mGoogleApiClient,
+                            builder.build());
+                    settingLocation(result);
+                    break;
+                default:
+                    break;
+            }
+        }
+    }
+
+    @Override
+    protected void onStart() {
+        super.onStart();
+        mGoogleApiClient.connect();
+        PendingResult<LocationSettingsResult> result1;
+        result1 = LocationServices.SettingsApi.checkLocationSettings(mGoogleApiClient,
+                builder.build());
+        settingLocation(result1);
     }
 
     private void displayLocation() {
@@ -126,7 +185,6 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
                 .addOnConnectionFailedListener(this)
                 .addApi(LocationServices.API).build();
 
-        mGoogleApiClient.connect();
     }
 
 
@@ -163,11 +221,11 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
     public void onConnected(@Nullable Bundle bundle) {
 
 
-        displayLocation();
-        if(mRequestingLocalUpdates) {
+       // displayLocation();
+        //if(mRequestingLocalUpdates) {
 
                 startLocationUpdates();
-        }
+       // }
 
     }
 
@@ -187,6 +245,38 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
     public void onLocationChanged(Location location) {
 
         mLastLocation = location;
-        displayLocation();
+    }
+
+    private void settingLocation( PendingResult<LocationSettingsResult> result1){
+        result1.setResultCallback(new ResultCallback<LocationSettingsResult>() {
+            @Override
+            public void onResult(@NonNull LocationSettingsResult locationSettingsResult) {
+                final Status status = locationSettingsResult.getStatus();
+                final LocationSettingsStates locationSettingsStates = locationSettingsResult.getLocationSettingsStates();
+                switch (status.getStatusCode()) {
+
+                    case LocationSettingsStatusCodes.SUCCESS:
+                        displayLocation();
+                        // All location settings are satisfied. The client can
+                        // initialize location requests here.
+                        break;
+                    case LocationSettingsStatusCodes.RESOLUTION_REQUIRED:
+                        // Location settings are not satisfied, but this can be fixed
+                        // by showing the user a dialog.
+                        try {
+                            status.startResolutionForResult(
+                                    MainActivity.this,
+                                    LOCATION_SETTING_REQUEST);
+                        } catch (IntentSender.SendIntentException e) {
+                            // Ignore the error.
+                        }
+                        break;
+                    case LocationSettingsStatusCodes.SETTINGS_CHANGE_UNAVAILABLE:
+                        // Location settings are not satisfied. However, we have no way
+                        // to fix the settings so we won't show the dialog.
+                        break;
+                }
+            }
+        });
     }
 }
